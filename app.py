@@ -132,14 +132,13 @@ with colA:
     ax_diag.set_ylim(0, 7)
     ax_diag.axis("off")
 
-    # Colors
     queue_color = "#DCEBFF"
     server_color = "#FFE7C7"
     border_color = "#2B2D42"
     arrow_color = "#222222"
     text_color = "#1F2430"
 
-    # Queue 1 box
+    # Queue 1
     q1_box = plt.matplotlib.patches.FancyBboxPatch(
         (1.0, 4.5), 2.4, 1.0,
         boxstyle="round,pad=0.03,rounding_size=0.08",
@@ -149,7 +148,7 @@ with colA:
     ax_diag.text(2.2, 5.0, "Queue 1", ha="center", va="center",
                  fontsize=12, weight="bold", color=text_color)
 
-    # Queue 2 box
+    # Queue 2
     q2_box = plt.matplotlib.patches.FancyBboxPatch(
         (1.0, 1.7), 2.4, 1.0,
         boxstyle="round,pad=0.03,rounding_size=0.08",
@@ -159,37 +158,44 @@ with colA:
     ax_diag.text(2.2, 2.2, "Queue 2", ha="center", va="center",
                  fontsize=12, weight="bold", color=text_color)
 
-    # Optional little job slots inside queues
+    # Optional internal queue dividers
     for x in [1.45, 1.9, 2.35]:
-        ax_diag.plot([x, x], [4.58, 5.42], color=border_color, lw=1, alpha=0.5)
-        ax_diag.plot([x, x], [1.78, 2.62], color=border_color, lw=1, alpha=0.5)
+        ax_diag.plot([x, x], [4.58, 5.42], color=border_color, lw=1, alpha=0.35)
+        ax_diag.plot([x, x], [1.78, 2.62], color=border_color, lw=1, alpha=0.35)
 
-    # Server box
+    # Server
+    srv_x, srv_y, srv_w, srv_h = 6.3, 3.0, 2.0, 1.3
     srv_box = plt.matplotlib.patches.FancyBboxPatch(
-        (6.0, 3.0), 2.2, 1.4,
+        (srv_x, srv_y), srv_w, srv_h,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=server_color
     )
     ax_diag.add_patch(srv_box)
-    ax_diag.text(7.1, 3.7, "Server", ha="center", va="center",
-                 fontsize=12, weight="bold", color=text_color)
+    ax_diag.text(srv_x + srv_w/2, srv_y + srv_h/2, "Server",
+                 ha="center", va="center", fontsize=12, weight="bold", color=text_color)
 
-    # Arrows
-    ax_diag.annotate("", xy=(5.8, 5.0), xytext=(3.4, 5.0),
-                     arrowprops=dict(arrowstyle="->", lw=2.2, color=arrow_color))
-    ax_diag.annotate("", xy=(5.8, 2.2), xytext=(3.4, 2.2),
-                     arrowprops=dict(arrowstyle="->", lw=2.2, color=arrow_color))
-    ax_diag.annotate("", xy=(10.7, 3.7), xytext=(8.2, 3.7),
-                     arrowprops=dict(arrowstyle="->", lw=2.2, color=arrow_color))
+    # Horizontal arrows from queues
+    ax_diag.annotate("", xy=(5.0, 5.0), xytext=(3.4, 5.0),
+                     arrowprops=dict(arrowstyle="->", lw=2.0, color=arrow_color))
+    ax_diag.annotate("", xy=(5.0, 2.2), xytext=(3.4, 2.2),
+                     arrowprops=dict(arrowstyle="->", lw=2.0, color=arrow_color))
 
-    # Merge guides
-    ax_diag.plot([5.8, 6.0], [5.0, 4.2], color=arrow_color, lw=1.8)
-    ax_diag.plot([5.8, 6.0], [2.2, 3.0], color=arrow_color, lw=1.8)
+    # Clean merge connector (stop before server)
+    ax_diag.plot([5.0, 5.7], [5.0, 4.2], color=arrow_color, lw=1.8)
+    ax_diag.plot([5.0, 5.7], [2.2, 3.1], color=arrow_color, lw=1.8)
+
+    # Short arrow into server
+    ax_diag.annotate("", xy=(srv_x, 3.65), xytext=(5.7, 3.65),
+                     arrowprops=dict(arrowstyle="->", lw=2.0, color=arrow_color))
+
+    # Output arrow
+    ax_diag.annotate("", xy=(10.6, 3.65), xytext=(srv_x + srv_w, 3.65),
+                     arrowprops=dict(arrowstyle="->", lw=2.0, color=arrow_color))
 
     # Labels
     ax_diag.text(1.0, 6.0, rf"$\lambda_1 = {lambda1:.2f}$", fontsize=12, color=text_color)
     ax_diag.text(1.0, 3.15, rf"$\lambda_2 = {lambda2:.2f}$", fontsize=12, color=text_color)
-    ax_diag.text(6.35, 4.95, rf"$\mu = {mu:.2f}$", fontsize=12, color=text_color)
+    ax_diag.text(6.55, 4.75, rf"$\mu = {mu:.2f}$", fontsize=12, color=text_color)
 
     ax_diag.set_title("Two-Queue / One-Server Merge System", fontsize=14, weight="bold", pad=10)
     st.pyplot(fig_diag, use_container_width=True)
@@ -214,19 +220,19 @@ with colB:
     st.markdown("### Interpretation")
     if policy in ["none", "priority", "threshold_priority"]:
         st.markdown(
-            """
-- This policy mainly changes **service order**.
-- If nominal load exceeds capacity, backlog should still grow.
-- So here the main effect is **who waits more**, not whether the system is stable.
-"""
+            r"""
+    - This policy mainly changes **service order**.
+    - If nominal load exceeds capacity, backlog should still grow.
+    - So here the main effect is **who waits more**, not whether the system is stable.
+    """
         )
     else:
         st.markdown(
-            """
-- This policy acts on the **input side**.
-- It can reduce the effective arrival load seen by the server.
-- That is why bounded queue trajectories may appear even when nominal \(\rho > 1\).
-"""
+            r"""
+    - This policy acts on the **input side**.
+    - It can reduce the effective arrival load seen by the server.
+    - That is why bounded queue trajectories may appear even when nominal \(\rho > 1\).
+    """
         )
 
 run = st.sidebar.button("Run Simulation", use_container_width=True)
@@ -352,12 +358,16 @@ if run:
         fig_cmp, ax_cmp = plt.subplots(figsize=(9, 4))
         x = range(len(df_cmp))
         w = 0.35
+
         ax_cmp.bar([i - w / 2 for i in x], df_cmp["avg_q1"], width=w, label="Avg Q1")
         ax_cmp.bar([i + w / 2 for i in x], df_cmp["avg_q2"], width=w, label="Avg Q2")
+
         ax_cmp.set_xticks(list(x))
         ax_cmp.set_xticklabels(df_cmp["policy"], rotation=15)
-        ax_cmp.set_ylabel("Average Queue Length")
+        ax_cmp.set_ylabel("Average Queue Length (log scale)")
         ax_cmp.set_title("Average Queue Length by Policy")
+        ax_cmp.set_yscale("log")   # <- important
         ax_cmp.legend()
-        ax_cmp.grid(axis="y", alpha=0.3)
+        ax_cmp.grid(axis="y", alpha=0.3, which="both")
+
         st.pyplot(fig_cmp, use_container_width=True)
