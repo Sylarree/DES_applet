@@ -140,7 +140,7 @@ st.subheader("System Diagram and Status")
 colA, colB = st.columns([1.15, 1.0])
 
 with colA:
-    fig_diag, ax_diag = plt.subplots(figsize=(9, 4.0))
+    fig_diag, ax_diag = plt.subplots(figsize=(9.2, 4.2))
     ax_diag.set_xlim(0, 12)
     ax_diag.set_ylim(0, 7)
     ax_diag.axis("off")
@@ -177,53 +177,53 @@ with colA:
         ax_diag.plot([x, x], [4.72, 5.38], color=border_color, lw=1, alpha=0.25)
         ax_diag.plot([x, x], [1.82, 2.48], color=border_color, lw=1, alpha=0.25)
 
-    # Join block
+    # Join block (kept small)
     join_box = patches.FancyBboxPatch(
-        (4.8, 3.0), 1.3, 1.1,
+        (4.85, 3.1), 1.15, 0.95,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=join_color
     )
     ax_diag.add_patch(join_box)
-    ax_diag.text(5.45, 3.55, "+", ha="center", va="center",
+    ax_diag.text(5.425, 3.58, "+", ha="center", va="center",
                  fontsize=20, weight="bold", color=text_color)
-    ax_diag.text(5.45, 2.65, "Join", ha="center", va="center",
+    ax_diag.text(5.425, 2.82, "Join", ha="center", va="center",
                  fontsize=10, color=text_color)
 
-    # Server
+    # Server box (made wider + taller)
     srv_box = patches.FancyBboxPatch(
-        (7.0, 3.05), 2.0, 1.0,
+        (7.0, 2.9), 2.35, 1.35,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=server_color
     )
     ax_diag.add_patch(srv_box)
-    ax_diag.text(8.0, 3.55, "Server", ha="center", va="center",
+    ax_diag.text(8.175, 3.575, "Server", ha="center", va="center",
                  fontsize=12, weight="bold", color=text_color)
 
     # Arrows
     a1 = FancyArrowPatch(
-        (3.1, 5.05), (4.8, 3.75),
+        (3.1, 5.05), (4.85, 3.72),
         arrowstyle="-|>", mutation_scale=12, linewidth=1.9, color=arrow_color
     )
     a2 = FancyArrowPatch(
-        (3.1, 2.15), (4.8, 3.35),
+        (3.1, 2.15), (4.85, 3.43),
         arrowstyle="-|>", mutation_scale=12, linewidth=1.9, color=arrow_color
     )
     a3 = FancyArrowPatch(
-        (6.1, 3.55), (7.0, 3.55),
+        (6.0, 3.58), (7.0, 3.58),
         arrowstyle="-|>", mutation_scale=12, linewidth=1.9, color=arrow_color
     )
     a4 = FancyArrowPatch(
-        (9.0, 3.55), (10.8, 3.55),
+        (9.35, 3.58), (10.95, 3.58),
         arrowstyle="-|>", mutation_scale=12, linewidth=1.9, color=arrow_color
     )
 
     for a in [a1, a2, a3, a4]:
         ax_diag.add_patch(a)
 
-    # Dynamic labels
-    ax_diag.text(1.05, 6.05, f"λ₁ = {lambda1:.2f}", fontsize=13, color=text_color, weight="bold")
-    ax_diag.text(1.05, 3.05, f"λ₂ = {lambda2:.2f}", fontsize=13, color=text_color, weight="bold")
-    ax_diag.text(7.1, 4.45, f"μ = {mu:.2f}", fontsize=13, color=text_color, weight="bold")
+    # Dynamic labels in figure
+    ax_diag.text(1.02, 6.05, f"λ₁ = {lambda1:.2f}", fontsize=13, color=text_color, weight="bold")
+    ax_diag.text(1.02, 3.05, f"λ₂ = {lambda2:.2f}", fontsize=13, color=text_color, weight="bold")
+    ax_diag.text(7.05, 4.65, f"μ = {mu:.2f}", fontsize=13, color=text_color, weight="bold")
 
     ax_diag.set_title("Two-Queue Assembly / Synchronization System", fontsize=14, weight="bold", pad=10)
     st.pyplot(fig_diag, use_container_width=True)
@@ -232,37 +232,62 @@ with colA:
 with colB:
     st.markdown("### System Status")
 
-    if abs(lambda1 - lambda2) < 1e-9:
-        st.info("Balanced nominal arrival rates: λ₁ ≈ λ₂.")
-    elif lambda1 > lambda2:
-        st.warning("Nominally, Queue 1 receives arrivals faster than Queue 2.")
-    else:
-        st.warning("Nominally, Queue 2 receives arrivals faster than Queue 1.")
+    pair_rate = min(lambda1, lambda2)
 
-    if min(lambda1, lambda2) < mu:
+    # Box 1: server-side load
+    if pair_rate < mu:
         st.success(
-            "The server is not the only issue here: synchronization mismatch can dominate the dynamics."
+            f"**Server Load:** matched-pair inflow = min(λ₁, λ₂) = {pair_rate:.2f} < μ = {mu:.2f}. "
+            f"The server itself is not overloaded."
+        )
+    elif abs(pair_rate - mu) < 1e-9 or abs(pair_rate - mu) / max(mu, 1e-9) < 0.05:
+        st.warning(
+            f"**Server Load:** matched-pair inflow = {pair_rate:.2f} is very close to μ = {mu:.2f}. "
+            f"The server is near saturation."
         )
     else:
+        st.error(
+            f"**Server Load:** matched-pair inflow = {pair_rate:.2f} > μ = {mu:.2f}. "
+            f"The server is a bottleneck."
+        )
+
+    # Box 2: coordination / mismatch risk
+    if policy == "none":
+        st.error(
+            "**Coordination Risk:** no-control does not regulate imbalance, so one pre-assembly queue may stay near zero while the other grows very large."
+        )
+    elif policy == "hard_blocking":
         st.warning(
-            "The server may also become a bottleneck depending on how fast matched pairs are formed."
+            "**Coordination Risk:** imbalance is controlled aggressively by blocking arrivals to the longer queue."
+        )
+    elif policy == "rate_throttling":
+        st.success(
+            "**Coordination Risk:** mismatch regulation is active; throttling suppresses growth of the longer queue."
+        )
+    elif policy == "probabilistic_acceptance":
+        st.success(
+            "**Coordination Risk:** mismatch regulation is active in a softer way via state-dependent acceptance."
+        )
+    elif policy == "hybrid":
+        st.success(
+            "**Coordination Risk:** strong mismatch regulation is active via throttling plus dropping."
         )
 
     st.markdown("### Interpretation")
-    if policy in ["none", "hard_blocking"]:
+    if policy == "none":
         st.markdown(
             """
-- This policy acts directly on the **pre-assembly queues**.
-- The key variable is usually the **imbalance** between Queue 1 and Queue 2.
-- In assembly systems, one queue often stays near zero while the other grows.
+- In the assembly system, the main issue is often **mismatch**, not just raw server load.
+- So even when the server can handle matched pairs, the uncontrolled queues can still behave badly.
+- Typical symptom: one queue stays near zero while the other one grows.
 """
         )
     else:
         st.markdown(
             """
-- This policy regulates the **mismatch before pairing**.
-- The goal is not just low backlog, but low **imbalance**.
-- Better synchronization usually means smoother assembly and less wasted buildup.
+- The controller acts on the **pre-assembly queues**, where imbalance is created.
+- The key goal is not just small backlog, but small **imbalance**.
+- Better synchronization means smoother assembly and less wasted buildup.
 """
         )
 
