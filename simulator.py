@@ -8,7 +8,6 @@ INF = float("inf")
 
 
 def exp_rv(rate: float, rng: random.Random) -> float:
-    """Generate an exponential random variable with the given rate."""
     if rate <= 0:
         raise ValueError("Rate must be positive.")
     u = rng.random()
@@ -22,7 +21,8 @@ class SimResult:
     policy: str
     avg_q1: float
     avg_q2: float
-    avg_total: float
+    avg_assembly_buffer: float
+    avg_imbalance: float
     throughput: float
     utilization: float
     dropped1: int
@@ -34,9 +34,10 @@ class SimResult:
     times: List[float]
     q1_hist: List[int]
     q2_hist: List[int]
+    assembly_hist: List[int]
 
 
-def simulate_two_queue_system(
+def simulate_assembly_system(
     policy: str,
     T: float = 20000.0,
     warmup: float = 1000.0,
@@ -46,30 +47,39 @@ def simulate_two_queue_system(
     seed: Optional[int] = None,
     threshold: int = 3,
     throttle_rate: float = 1.0,
-    hybrid_drop_threshold: int = 5,
+    drop_threshold: int = 5,
+    acceptance_alpha: float = 0.2,
     record_every: int = 50,
 ) -> SimResult:
     """
-    Simulate a two-queue / one-server merge system.
+    Assembly system:
+        - Arrivals join Q1 and Q2 separately
+        - When Q1>0 and Q2>0, one item from each can form one assembled job
+        - Assembled jobs enter an assembly buffer
+        - Server processes assembled jobs at rate mu
+
+    Policies act on the pre-assembly queues and are based on imbalance.
 
     Policies:
         none:
-            random tie-breaking, no input control
-        priority:
-            serve the longer queue first (tie -> Q1)
-        threshold_priority:
-            if a queue reaches/exceeds threshold, prioritize it
+            no control
+        hard_blocking:
+            block arrivals to longer queue if imbalance exceeds threshold
         rate_throttling:
-            if Qi >= threshold, reduce that queue's arrival rate to throttle_rate
+            reduce arrival rate of longer queue when imbalance exceeds threshold
+        probabilistic_acceptance:
+            accept arrivals to longer queue with probability max(0, 1 - alpha * excess)
         hybrid:
-            threshold-priority service + throttling + hard drop if Qi >= hybrid_drop_threshold
+            throttle longer queue above threshold; hard drop above drop_threshold
     """
+
     rng = random.Random(seed)
 
     # State
     t = 0.0
     q1 = 0
     q2 = 0
+    assembly_buffer = 0
     server_busy = False
 
     # Event calendar
@@ -77,7 +87,7 @@ def simulate_two_queue_system(
     tA2 = exp_rv(lambda2, rng)
     tD = INF
 
-    # Statistics
+    # Stats
     arrivals1 = 0
     arrivals2 = 0
     dropped1 = 0
@@ -86,13 +96,16 @@ def simulate_two_queue_system(
 
     area_q1 = 0.0
     area_q2 = 0.0
+    area_assembly = 0.0
     area_busy = 0.0
+    area_imbalance = 0.0
     last_t = 0.0
 
-    # History for plotting
+    # History
     times: List[float] = [0.0]
     q1_hist: List[int] = [0]
     q2_hist: List[int] = [0]
+    assembly_hist: List[int] = [0]
     event_counter = 0
 
     def maybe_record(now: float) -> None:
@@ -102,9 +115,10 @@ def simulate_two_queue_system(
             times.append(now)
             q1_hist.append(q1)
             q2_hist.append(q2)
+            assembly_hist.append(assembly_buffer)
 
     def update_time_averages(new_t: float) -> None:
-        nonlocal area_q1, area_q2, area_busy, last_t
+        nonlocal area_q1, area_q2, area_assembly, area_busy, area_imbalance, last_t
         start = max(last_t, warmup)
         end = max(min(new_t, T), warmup)
 
@@ -112,64 +126,102 @@ def simulate_two_queue_system(
             dt = end - start
             area_q1 += q1 * dt
             area_q2 += q2 * dt
+            area_assembly += assembly_buffer * dt
             area_busy += (1.0 if server_busy else 0.0) * dt
+            area_imbalance += abs(q1 - q2) * dt
 
         last_t = new_t
 
-    def choose_next_queue() -> Optional[int]:
-        """Choose which queue to serve next."""
-        if q1 + q2 == 0:
-            return None
+    def imbalance() -> int:
+        return q1 - q2
+
+    def try_assemble_and_start_service(now: float) -> None:
+        """
+        Form as many pairs as possible from Q1 and Q2 into assembly buffer.
+        Then start service if server is idle and buffer has jobs.
+        """
+        nonlocal q1, q2, assembly_buffer, server_busy, tD
+
+        pairs = min(q1, q2)
+        if pairs > 0:
+            q1 -= pairs
+            q2 -= pairs
+            assembly_buffer += pairs
+
+        if (not server_busy) and assembly_buffer > 0:
+            assembly_buffer -= 1
+            server_busy = True
+            tD = now + exp_rv(mu, rng)
+        elif (not server_busy) and assembly_buffer == 0:
+            tD = INF
+
+    def arrival_allowed(queue_idx: int) -> bool:
+        """
+        Decide whether arrival is admitted based on current imbalance and policy.
+        The longer queue is the one potentially controlled.
+        """
+        nonlocal dropped1, dropped2
+
+        d = imbalance()
+
+        longer_q1 = d > threshold
+        longer_q2 = -d > threshold
 
         if policy == "none":
-            if q1 > 0 and q2 > 0:
-                return 1 if rng.random() < 0.5 else 2
-            if q1 > 0:
-                return 1
-            return 2
+            return True
 
-        if policy in ("threshold_priority", "hybrid"):
-            if q1 >= threshold and q2 >= threshold:
-                return 1 if q1 >= q2 else 2
-            if q1 >= threshold:
-                return 1
-            if q2 >= threshold:
-                return 2
+        if policy == "hard_blocking":
+            if queue_idx == 1 and longer_q1:
+                dropped1 += 1
+                return False
+            if queue_idx == 2 and longer_q2:
+                dropped2 += 1
+                return False
+            return True
 
-        # default behavior for priority / rate_throttling / tie-breaks
-        if q1 > q2:
-            return 1
-        if q2 > q1:
-            return 2
-        return 1
+        if policy == "probabilistic_acceptance":
+            if queue_idx == 1 and d > threshold:
+                excess = d - threshold
+                p = max(0.0, 1.0 - acceptance_alpha * excess)
+                ok = rng.random() < p
+                if not ok:
+                    dropped1 += 1
+                return ok
+            if queue_idx == 2 and -d > threshold:
+                excess = -d - threshold
+                p = max(0.0, 1.0 - acceptance_alpha * excess)
+                ok = rng.random() < p
+                if not ok:
+                    dropped2 += 1
+                return ok
+            return True
 
-    def maybe_start_service(now: float) -> None:
-        nonlocal server_busy, q1, q2, tD
+        if policy == "hybrid":
+            if queue_idx == 1:
+                if d >= drop_threshold:
+                    dropped1 += 1
+                    return False
+            if queue_idx == 2:
+                if -d >= drop_threshold:
+                    dropped2 += 1
+                    return False
+            return True
 
-        if server_busy:
-            return
-
-        nxt = choose_next_queue()
-        if nxt is None:
-            tD = INF
-            return
-
-        server_busy = True
-        if nxt == 1:
-            q1 -= 1
-        else:
-            q2 -= 1
-
-        tD = now + exp_rv(mu, rng)
+        # rate_throttling does not drop arrivals
+        return True
 
     def next_arrival_time(now: float, queue_idx: int) -> float:
-        """Schedule next arrival according to current policy and congestion state."""
+        """
+        For throttling / hybrid, if one queue is much longer than the other,
+        reduce that queue's arrival rate.
+        """
         base_rate = lambda1 if queue_idx == 1 else lambda2
+        d = imbalance()
 
         if policy in ("rate_throttling", "hybrid"):
-            if queue_idx == 1 and q1 >= threshold:
+            if queue_idx == 1 and d > threshold:
                 return now + exp_rv(throttle_rate, rng)
-            if queue_idx == 2 and q2 >= threshold:
+            if queue_idx == 2 and -d > threshold:
                 return now + exp_rv(throttle_rate, rng)
 
         return now + exp_rv(base_rate, rng)
@@ -183,35 +235,21 @@ def simulate_two_queue_system(
         if t >= T:
             break
 
-        # Arrival to Queue 1
+        # Arrival to Q1
         if t == tA1:
             arrivals1 += 1
-            admit = True
-
-            if policy == "hybrid" and q1 >= hybrid_drop_threshold:
-                admit = False
-                dropped1 += 1
-
-            if admit:
+            if arrival_allowed(1):
                 q1 += 1
-                maybe_start_service(t)
-
+                try_assemble_and_start_service(t)
             tA1 = next_arrival_time(t, 1)
             maybe_record(t)
 
-        # Arrival to Queue 2
+        # Arrival to Q2
         elif t == tA2:
             arrivals2 += 1
-            admit = True
-
-            if policy == "hybrid" and q2 >= hybrid_drop_threshold:
-                admit = False
-                dropped2 += 1
-
-            if admit:
+            if arrival_allowed(2):
                 q2 += 1
-                maybe_start_service(t)
-
+                try_assemble_and_start_service(t)
             tA2 = next_arrival_time(t, 2)
             maybe_record(t)
 
@@ -219,13 +257,14 @@ def simulate_two_queue_system(
         else:
             completed += 1
             server_busy = False
-            maybe_start_service(t)
+            try_assemble_and_start_service(t)
             maybe_record(t)
 
     if times[-1] != t:
         times.append(t)
         q1_hist.append(q1)
         q2_hist.append(q2)
+        assembly_hist.append(assembly_buffer)
 
     observed_time = max(T - warmup, 1e-12)
 
@@ -233,7 +272,8 @@ def simulate_two_queue_system(
         policy=policy,
         avg_q1=area_q1 / observed_time,
         avg_q2=area_q2 / observed_time,
-        avg_total=(area_q1 + area_q2) / observed_time,
+        avg_assembly_buffer=area_assembly / observed_time,
+        avg_imbalance=area_imbalance / observed_time,
         throughput=completed / observed_time,
         utilization=area_busy / observed_time,
         dropped1=dropped1,
@@ -245,6 +285,7 @@ def simulate_two_queue_system(
         times=times,
         q1_hist=q1_hist,
         q2_hist=q2_hist,
+        assembly_hist=assembly_hist,
     )
 
 
@@ -257,14 +298,21 @@ def compare_policies(
     seed: Optional[int] = None,
     threshold: int = 3,
     throttle_rate: float = 1.0,
-    hybrid_drop_threshold: int = 5,
+    drop_threshold: int = 5,
+    acceptance_alpha: float = 0.2,
     record_every: int = 50,
 ):
-    policies = ["none", "priority", "threshold_priority", "rate_throttling", "hybrid"]
-    rows = []
+    policies = [
+        "none",
+        "hard_blocking",
+        "rate_throttling",
+        "probabilistic_acceptance",
+        "hybrid",
+    ]
 
+    rows = []
     for pol in policies:
-        res = simulate_two_queue_system(
+        res = simulate_assembly_system(
             policy=pol,
             T=T,
             warmup=warmup,
@@ -274,20 +322,20 @@ def compare_policies(
             seed=seed,
             threshold=threshold,
             throttle_rate=throttle_rate,
-            hybrid_drop_threshold=hybrid_drop_threshold,
+            drop_threshold=drop_threshold,
+            acceptance_alpha=acceptance_alpha,
             record_every=record_every,
         )
-
         rows.append(
             {
                 "policy": pol,
                 "avg_q1": res.avg_q1,
                 "avg_q2": res.avg_q2,
-                "avg_total": res.avg_total,
+                "avg_assembly_buffer": res.avg_assembly_buffer,
+                "avg_imbalance": res.avg_imbalance,
                 "throughput": res.throughput,
                 "utilization": res.utilization,
                 "drops": res.dropped1 + res.dropped2,
             }
         )
-
     return rows

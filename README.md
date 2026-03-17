@@ -1,24 +1,29 @@
-# Two-Queue Merge System Control Applet
+# Two-Queue Assembly System Control Applet
 
-Interactive Streamlit app for exploring a two-queue / one-server merge system under several control policies:
+Interactive Streamlit app for exploring a **two-queue assembly/synchronization system**.
+
+In this model:
+- Queue 1 and Queue 2 receive arrivals separately
+- one item from Queue 1 and one item from Queue 2 are joined
+- the assembled job is then processed by a server
+
+## Implemented control policies
 
 - `none`
-- `priority`
-- `threshold_priority`
+- `hard_blocking`
 - `rate_throttling`
+- `probabilistic_acceptance`
 - `hybrid`
 
 ## Features
 
-- Editable inputs for `λ₁`, `λ₂`, and `μ`
-- Policy dropdown
-- Policy-specific parameter inputs that appear only when needed
-- Queue/server system diagram
-- Stability indicator based on nominal load `ρ = (λ₁ + λ₂) / μ`
-- Sample-path trajectory plot
-- Optional animation
-- Compare-all-policies table and chart
-- CSV export of the selected trajectory
+- editable λ₁, λ₂, and μ
+- policy-specific inputs that appear only when needed
+- system schematic showing assembly before service
+- live or static sample-path plots
+- diagnostics for queue lengths, imbalance, throughput, utilization
+- compare-all-policies table and chart
+- CSV export of simulated trajectories
 
 ## Files
 
