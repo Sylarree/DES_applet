@@ -128,23 +128,22 @@ colA, colB = st.columns([1.2, 1.0])
 
 with colA:
     import matplotlib.patches as patches
-    from matplotlib.patches import FancyArrowPatch, Circle
+    from matplotlib.patches import FancyArrowPatch
 
     fig_diag, ax_diag = plt.subplots(figsize=(9, 3.8))
     ax_diag.set_xlim(0, 12)
     ax_diag.set_ylim(0, 7)
     ax_diag.axis("off")
 
-    # Colors
     queue_color = "#DCEBFF"
     server_color = "#FCE7C8"
     border_color = "#2B2D42"
     arrow_color = "#2B2D42"
     text_color = "#1F2430"
 
-    # --- Queue 1 box
+    # Queue 1
     q1_box = patches.FancyBboxPatch(
-        (1.1, 4.5), 2.2, 0.9,
+        (1.2, 4.5), 2.0, 0.9,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=queue_color
     )
@@ -152,13 +151,9 @@ with colA:
     ax_diag.text(2.2, 4.95, "Queue 1", ha="center", va="center",
                  fontsize=12, weight="bold", color=text_color)
 
-    # Optional queue dividers
-    for x in [1.5, 1.9, 2.3]:
-        ax_diag.plot([x, x], [4.62, 5.28], color=border_color, lw=1, alpha=0.25)
-
-    # --- Queue 2 box
+    # Queue 2
     q2_box = patches.FancyBboxPatch(
-        (1.1, 1.8), 2.2, 0.9,
+        (1.2, 1.8), 2.0, 0.9,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=queue_color
     )
@@ -166,64 +161,57 @@ with colA:
     ax_diag.text(2.2, 2.25, "Queue 2", ha="center", va="center",
                  fontsize=12, weight="bold", color=text_color)
 
-    for x in [1.5, 1.9, 2.3]:
+    # Optional internal queue dividers
+    for x in [1.55, 1.9, 2.25]:
+        ax_diag.plot([x, x], [4.62, 5.28], color=border_color, lw=1, alpha=0.25)
         ax_diag.plot([x, x], [1.92, 2.58], color=border_color, lw=1, alpha=0.25)
 
-    # --- Merge node
-    merge_center = (5.0, 3.6)
-    merge_node = Circle(merge_center, 0.08, facecolor=arrow_color, edgecolor=arrow_color)
-    ax_diag.add_patch(merge_node)
-
-    # --- Server box
+    # Server
+    srv_x, srv_y, srv_w, srv_h = 5.9, 3.0, 2.0, 1.0
     srv_box = patches.FancyBboxPatch(
-        (6.0, 3.1), 2.1, 1.0,
+        (srv_x, srv_y), srv_w, srv_h,
         boxstyle="round,pad=0.03,rounding_size=0.08",
         linewidth=2, edgecolor=border_color, facecolor=server_color
     )
     ax_diag.add_patch(srv_box)
-    ax_diag.text(7.05, 3.6, "Server", ha="center", va="center",
-                 fontsize=12, weight="bold", color=text_color)
+    ax_diag.text(srv_x + srv_w/2, srv_y + srv_h/2, "Server",
+                 ha="center", va="center", fontsize=12, weight="bold", color=text_color)
 
-    # --- Arrows into merge node
+    # Diagonal arrows directly into server
     a1 = FancyArrowPatch(
-        (3.35, 4.95), merge_center,
+        (3.2, 4.95), (srv_x, 3.65),
         arrowstyle="-|>", mutation_scale=12,
         linewidth=2, color=arrow_color,
-        shrinkA=0, shrinkB=8
+        connectionstyle="arc3,rad=0"
     )
     a2 = FancyArrowPatch(
-        (3.35, 2.25), merge_center,
+        (3.2, 2.25), (srv_x, 3.35),
         arrowstyle="-|>", mutation_scale=12,
         linewidth=2, color=arrow_color,
-        shrinkA=0, shrinkB=8
+        connectionstyle="arc3,rad=0"
     )
-
-    # --- Arrow from merge node to server
     a3 = FancyArrowPatch(
-        (5.08, 3.6), (6.0, 3.6),
-        arrowstyle="-|>", mutation_scale=12,
-        linewidth=2, color=arrow_color,
-        shrinkA=0, shrinkB=6
-    )
-
-    # --- Output arrow
-    a4 = FancyArrowPatch(
-        (8.1, 3.6), (10.4, 3.6),
+        (srv_x + srv_w, 3.5), (10.2, 3.5),
         arrowstyle="-|>", mutation_scale=12,
         linewidth=2, color=arrow_color
     )
 
-    for a in [a1, a2, a3, a4]:
+    for a in [a1, a2, a3]:
         ax_diag.add_patch(a)
+
+    # Bigger dynamic parameter labels inside figure
+    ax_diag.text(1.15, 5.85, f"λ₁ = {lambda1:.2f}", fontsize=13, color=text_color, weight="bold")
+    ax_diag.text(1.15, 3.05, f"λ₂ = {lambda2:.2f}", fontsize=13, color=text_color, weight="bold")
+    ax_diag.text(6.05, 4.35, f"μ = {mu:.2f}", fontsize=13, color=text_color, weight="bold")
 
     ax_diag.set_title("Two-Queue / One-Server Merge System", fontsize=14, weight="bold", pad=10)
     st.pyplot(fig_diag, use_container_width=True)
 
-    # Dynamic values shown cleanly below, not inside the figure
+    # Dynamic values below figure too
     st.caption(
         f"Current parameters: λ₁ = {lambda1:.2f}, λ₂ = {lambda2:.2f}, μ = {mu:.2f}"
     )
-
+    
 with colB:
     st.markdown("### System Status")
 
@@ -244,7 +232,7 @@ with colB:
     st.markdown("### Interpretation")
     if policy in ["none", "priority", "threshold_priority"]:
         st.markdown(
-            r"""
+            """
     - This policy mainly changes **service order**.
     - If nominal load exceeds capacity, backlog should still grow.
     - So here the main effect is **who waits more**, not whether the system is stable.
@@ -252,10 +240,10 @@ with colB:
         )
     else:
         st.markdown(
-            r"""
+            """
     - This policy acts on the **input side**.
     - It can reduce the effective arrival load seen by the server.
-    - That is why bounded queue trajectories may appear even when nominal \(\rho > 1\).
+    - That is why bounded queue trajectories may appear even when nominal ρ > 1.
     """
         )
 
